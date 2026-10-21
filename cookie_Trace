@@ -1,0 +1,55 @@
+// p5.js logo: "Cookie Trace"
+// Press "s" to save the logo as a PNG.
+
+const NAME = "Cookie Trace";
+const NAVY = "#1e2d55";
+const TAN = "#f0d583";
+const GOLD = "#f8d25a";
+const CREAM = "#f4fbe3";
+
+function setup() {
+  createCanvas(600, 528);
+  noLoop();
+}
+
+function draw() {
+  background(CREAM);
+
+  // tan card with navy border
+  stroke(NAVY);
+  strokeWeight(6);
+  fill(TAN);
+  rect(4, 10, 588, 504);
+
+  // gold circle
+  fill(GOLD);
+  circle(282, 205, 276);
+
+  // outlined star (offset slightly right of the circle's center)
+  noFill();
+  strokeJoin(MITER);
+  drawStar(325, 194, 81, 32);
+
+  // wordmark
+  noStroke();
+  fill(NAVY);
+  textFont("Helvetica");
+  textStyle(BOLD);
+  textSize(60);
+  textAlign(LEFT, CENTER);
+  text(NAME, 30, 400);
+}
+
+function drawStar(cx, cy, outerR, innerR) {
+  beginShape();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const a = -HALF_PI + (i * PI) / 5;
+    vertex(cx + cos(a) * r, cy + sin(a) * r);
+  }
+  endShape(CLOSE);
+}
+
+function keyPressed() {
+  if (key === "s") saveCanvas("cookie_trace_logo", "png");
+}
