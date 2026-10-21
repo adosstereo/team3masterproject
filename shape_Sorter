@@ -1,0 +1,51 @@
+// p5.js logo: "Shape Sorter"
+// Press "s" to save the logo as a PNG.
+
+const NAME = "Shape Sorter";
+const NAVY = "#1e2d55";
+const GREEN = "#9fe04f";
+const CREAM = "#f4fbe3";
+const PINK = "#ee6aa7";
+const BLUE = "#4f8cf5";
+const YELLOW = "#f8d05c";
+
+function setup() {
+  createCanvas(600, 600);
+  noLoop();
+}
+
+function draw() {
+  background(CREAM);
+
+  // green card with navy border
+  stroke(NAVY);
+  strokeWeight(6);
+  fill(GREEN);
+  rect(10, 30, 580, 540);
+
+  // shapes
+  strokeWeight(6);
+  strokeJoin(ROUND);
+
+  fill(PINK);
+  circle(158, 240, 134);
+
+  fill(BLUE);
+  rect(250, 172, 136, 136);
+
+  fill(YELLOW);
+  triangle(406, 308, 541, 308, 474, 172);
+
+  // wordmark
+  noStroke();
+  fill(NAVY);
+  textFont("Helvetica");
+  textStyle(BOLD);
+  textSize(60);
+  textAlign(LEFT, CENTER);
+  text(NAME, 45, 450);
+}
+
+function keyPressed() {
+  if (key === "s") saveCanvas("logo", "png");
+}
