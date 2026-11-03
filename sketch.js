@@ -73,7 +73,7 @@ function buttons(a) {
 }
 function draw() {
     if (pPage !== page) {
-        //put setup code here
+        //copy and paste setup code here
         switch (page) {
             case "gameMenu":
                 mouse = false;
@@ -102,7 +102,7 @@ function draw() {
                 //home page
         }
     }
-    //put draw code here
+    //copy and paste draw code here
     switch (page) {
         case "gameMenu":
             buttons(false);
@@ -123,28 +123,53 @@ function draw() {
     pPage = page;
 }
 function mouseDown() {
-    mouse = true;
+    //mouse = true;
 }
 function mouseClicked() {
+    mouse = true;
     var a = Arr[mouseX+(mouseY*w)];
-    if (a = 1) {
-        page = "runGame1";
-        console.log("game 1");
-    }
-    if (false) {
-        runGame2();
-    }
-    if (false) {
-        runGame3();
-    }
-    if (false) {
-        runGame4();
-    }
-    if (false) {
-        openHelp();
-    }
-    if (false) {
-        returnToHome();
+    switch (page) {
+        case "gameMenu":
+            switch (a) {
+                case 1:
+                    page = "homePage";
+                    console.log("home");
+                    break;
+                case 2:
+                    page = "openHelp";
+                    console.log("help");
+                    break;
+                case 3:
+                    page = "shapePage";
+                    console.log("game 1");
+                    break;
+                case 4:
+                    page = "ninjaPage";
+                    console.log("game 2");
+                    break;
+                case 5:
+                    page = "cookiePage";
+                    console.log("game 3");
+                    break;
+                case 6:
+                    page = "bubblePage";
+                    console.log("game 4");
+                    break;
+                default:
+            }
+            break;
+        case "shopPage":
+            break;
+        case "shapePage":
+            break;
+        case "ninjaPage":
+            break;
+        case "cookiePage":
+            break;
+        case "bubblePage":
+            break;
+        default:
+            //home page
     }
     mouse = false;
 }
@@ -172,22 +197,4 @@ function updateCanvasArray () {
     }
     stroke(0, 0, 0);
     console.log("scalar: " + s);
-}
-function runGame1() {
-
-}
-function runGame2() {
-    
-}
-function runGame3() {
-    
-}
-function runGame4() {
-    
-}
-function openHelp() {
-    
-}
-function returnToHome() {
-    
 }
