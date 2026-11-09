@@ -14,8 +14,13 @@ let unlockedLevel = 1;
 let levelStars = {1:0, 2:0, 3:0, 4:0, 5:0, 6:0};
 let levelButtons = [];
 let achievements = {};
+let claimedAchievements = {};
+const achievementClaimsKey = "vegetableShinobiAchievementClaims";
 let achievementToast = null;
 let achievementScroll = 0;
+let flyingAchievementStars = [];
+const starFlightDuration = 620;
+const starBadgePulseDuration = 240;
 const achievementDefinitions = [
   {id:"mega", title:"Mega Shinobi", detail:"Get a Mega Swipe (5+ veggies)", icon:"⚡"},
   ...Array.from({length:6}, (_,i) => ({id:"level"+(i+1), title:"Level "+(i+1)+" Master", detail:"Earn 3 stars on Level "+(i+1), icon:"⭐"})),
@@ -24,10 +29,12 @@ const achievementDefinitions = [
   {id:"points150", title:"Point Master", detail:"Score 150 points in one level", icon:"🎯"}
 ];
 
-let playButton, tutorialButton, achievementsButton;
-let homeButton, closeButton, backButton, retryButton;
+let playButton, tutorialButton, achievementsButton, settingsButton;
+let menuBackButton, menuHomeButton;
+let closeButton, backButton, retryButton;
 
 let vegetables = [];
+let choppedVegetables = [];
 let bombs = [];
 let particles = [];
 let floatingTexts = [];
@@ -67,6 +74,119 @@ let veggieTypes = [
   "carrot", "tomato", "broccoli", "corn", "eggplant"
 ];
 
+// SOUND
+const gameSounds = {};
+const effectBoosts = {click: 3.5, slash: 2.6, chop: 2.4};
+const boostedEffects = new Set();
+let effectAudioContext;
+let effectOutput;
+const audioSettingsKey = "vegetableShinobiAudioSettings";
+const audioVolume = {music: 30, effects: 100};
+const audioControls = [
+  {key: "music", label: "Music"},
+  {key: "effects", label: "Sound Effects"}
+];
+let activeVolumeSlider = null;
+let menuMusic;
+let levelMusic = null;
+let resultSound = null;
+let playedSwipeSound = false;
+
+function loadAudioSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(audioSettingsKey));
+    for (const {key} of audioControls) {
+      if (key === "effects" && saved?.effects === 30 && !saved.effectsDefaultUpdated) continue;
+      if (Number.isFinite(saved?.[key])) {
+        audioVolume[key] = constrain(Math.round(saved[key]), 0, 100);
+      }
+    }
+  } catch (error) {
+    console.warn("Could not load audio settings:", error);
+  }
+}
+
+function loadGameSounds() {
+  menuMusic = new Audio("assets/menu.mp3");
+  menuMusic.loop = true;
+  menuMusic.volume = audioVolume.music / 100;
+  const files = {
+    click: "click.mp3",
+    slash: "sowrd slash.mp3",
+    chop: "vegetable chop.mp3",
+    explosion: "explosion.mp3",
+    fail: "fail.mp3",
+    victory: "victory.mp3"
+  };
+  for (const [name, file] of Object.entries(files)) {
+    const sound = new Audio("assets/" + file);
+    sound.volume = audioVolume.effects / 100;
+    sound.preload = "auto";
+    gameSounds[name] = sound;
+  }
+}
+
+function boostQuietEffect(name, sound) {
+  const boost = effectBoosts[name];
+  if (!boost || !window.AudioContext) return;
+
+  try {
+    if (!effectAudioContext) {
+      effectAudioContext = new AudioContext();
+      effectOutput = effectAudioContext.createGain();
+      effectOutput.gain.value = audioVolume.effects / 100;
+      effectOutput.connect(effectAudioContext.destination);
+    }
+
+    if (!boostedEffects.has(name)) {
+      // Raise quiet effects and round off peaks before applying the volume slider.
+      const shaper = effectAudioContext.createWaveShaper();
+      shaper.curve = Float32Array.from({length: 2049}, (_, i) =>
+        0.95 * Math.tanh(boost * (i / 1024 - 1))
+      );
+      shaper.connect(effectOutput);
+      effectAudioContext.createMediaElementSource(sound).connect(shaper);
+      boostedEffects.add(name);
+      sound.volume = 1;
+    }
+    if (effectAudioContext.state !== "running") {
+      effectAudioContext.resume().catch(() => {});
+    }
+  } catch (error) {
+    console.warn("Could not boost sound effect:", error);
+  }
+}
+
+function playGameSound(name) {
+  const sound = gameSounds[name];
+  boostQuietEffect(name, sound);
+  sound.currentTime = 0;
+  sound.play().catch(() => {});
+  return sound;
+}
+
+function stopLevelAudio() {
+  if (levelMusic) {
+    levelMusic.pause();
+    levelMusic = null;
+  }
+  if (resultSound) {
+    resultSound.pause();
+    resultSound = null;
+  }
+}
+
+function playLevelResult(name) {
+  stopLevelAudio();
+  resultSound = playGameSound(name);
+}
+
+function failLevel() {
+  if (gameOver || levelComplete) return;
+  gameOver = true;
+  playLevelResult("fail");
+}
+
 // LOAD ASSETS
 function preload() {
   dirtBackground = loadImage("assets/dirt.jpg");
@@ -76,6 +196,8 @@ function preload() {
 function setup() {
   createCanvas(windowWidth, windowHeight);
   frameRate(60);
+  loadAudioSettings();
+  loadGameSounds();
 
   cream = color("#F1FADF");
   sky = color("#2BD9EE");
@@ -88,8 +210,10 @@ function setup() {
   playButton = makeButton(0, 0, 280, 90, "Play", sky, 36);
   tutorialButton = makeButton(0, 0, 280, 75, "Tutorial", yellow, 30);
   achievementsButton = makeButton(0, 0, 280, 75, "Achievements", pink, 27);
+  settingsButton = makeButton(0, 0, 280, 75, "Settings", white, 27);
 
-  homeButton = makeButton(95, 35, 150, 50, "Home", white, 22);
+  menuHomeButton = makeButton(53, 35, 84, 42, "Home", white, 17);
+  menuBackButton = makeButton(53, 35, 84, 42, "← Back", white, 17);
   closeButton = makeButton(0, 0, 155, 48, "Close", pink, 23);
   backButton = makeButton(0, 0, 180, 60, "Levels", yellow, 25);
   retryButton = makeButton(0, 0, 180, 60, "Retry", pink, 25);
@@ -106,17 +230,20 @@ function setup() {
   resetCamera();
   loadLevelProgress();
   loadAchievements();
+  loadAchievementClaims();
   syncStarAchievements();
 }
 
 // MAIN DRAW
 function draw() {
+  if (screen !== "menu") menuSliceAt = null;
   background(cream);
 
   if (screen === "menu") drawMenu();
   else if (screen === "levels") drawLevelSelect();
   else if (screen === "game") drawGame();
   else if (screen === "achievements") drawAchievements();
+  else if (screen === "settings") drawSettings();
 
   drawTopBar();
 
@@ -166,6 +293,34 @@ function loadAchievements() {
     achievements = {};
   }
 }
+function loadAchievementClaims() {
+  try {
+    claimedAchievements = JSON.parse(localStorage.getItem(achievementClaimsKey)) || {};
+  } catch (error) {
+    console.warn("Could not load achievement claims:", error);
+  }
+}
+
+function claimAchievement(id) {
+  if (!achievements[id]) return false;
+  loadAchievementClaims();
+  if (claimedAchievements[id]) return false;
+
+  const updated = {...claimedAchievements, [id]: true};
+  try {
+    localStorage.setItem(achievementClaimsKey, JSON.stringify(updated));
+    claimedAchievements = updated;
+    return true;
+  } catch (error) {
+    console.warn("Could not save achievement claim:", error);
+    return false;
+  }
+}
+
+function getClaimedAchievementStars() {
+  return achievementDefinitions.filter(a => claimedAchievements[a.id]).length;
+}
+
 function unlockAchievement(id) {
   if (achievements[id]) return;
   const definition = achievementDefinitions.find(a => a.id === id);
@@ -260,30 +415,247 @@ function drawTopBar() {
   fill(navy);
   textAlign(CENTER, CENTER);
   textStyle(BOLD);
-  textSize(min(30, max(16, width / 22)));
+  const titleSize = min(30, max(16, width / 22));
+  textSize(titleSize);
+  textSize(titleSize * min(1, max(30, width - 208) / textWidth(gameTitle)));
   text(gameTitle, width / 2, barHeight / 2);
   pop();
 
-  drawButton(homeButton);
+  if (screen === "menu") drawButton(menuHomeButton, false);
+  else drawButton(menuBackButton);
+
+  if (screen === "menu" || screen === "achievements") {
+    drawAchievementStarCounter();
+  }
+}
+
+function drawAchievementStarCounter() {
+  const now = millis();
+  const x = width - 53;
+  const y = barHeight / 2;
+  let pending = 0;
+  let pulse = 0;
+
+  flyingAchievementStars = flyingAchievementStars.filter(
+    star => now - star.started < starFlightDuration + starBadgePulseDuration
+  );
+  for (const star of flyingAchievementStars) {
+    const age = now - star.started;
+    if (age < starFlightDuration) {
+      pending++;
+    } else {
+      const t = (age - starFlightDuration) / starBadgePulseDuration;
+      pulse = max(pulse, sin(PI * t));
+    }
+  }
+
+  push();
+  translate(x, y);
+  scale(1 + 0.13 * pulse);
+  rectMode(CENTER);
+  stroke(navy);
+  strokeWeight(3);
+  fill(white);
+  rect(0, 0, 84, 42, 20);
+  fill(yellow);
+  drawStarShape(-21, 0, 5, 11, 5);
+  noStroke();
+  fill(navy);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  textSize(22);
+  text(max(0, getClaimedAchievementStars() - pending), 12, 0);
+  pop();
+
+  for (const star of flyingAchievementStars) {
+    const t = (now - star.started) / starFlightDuration;
+    if (t >= 1) continue;
+    const starX = lerp(star.x, x - 21, t);
+    const starY = lerp(star.y, y, t) - sin(PI * t) * 38;
+    push();
+    translate(starX, starY);
+    rotate(TWO_PI * t);
+    stroke(navy);
+    strokeWeight(2);
+    fill(yellow);
+    const radius = lerp(17, 10, t);
+    drawStarShape(0, 0, radius * 0.48, radius, 5);
+    pop();
+  }
 }
 
 // MAIN MENU
+let menuSliceAt = null;
+let menuVegetableTargets = [];
+const menuTapTimes = {};
+
 function drawMenu() {
-  let cx = width / 2;
-  let cy = (height + barHeight) / 2;
+  drawMenuGarden();
 
-  playButton.x = cx;
-  playButton.y = cy - 115;
+  const contentH = max(0, height - barHeight);
+  const wide = width >= 650;
+  const buttonX = wide ? width * 0.68 : width / 2;
+  const buttonAreaH = wide ? contentH : contentH * 0.56;
+  const buttons = [playButton, tutorialButton, achievementsButton, settingsButton];
+  const step = min(100, buttonAreaH / buttons.length);
+  const buttonY = height - buttonAreaH / 2;
 
-  tutorialButton.x = cx;
-  tutorialButton.y = cy;
+  const gardenWidth = wide ? buttonX - 152 : width;
+  const gardenHeight = wide ? contentH : contentH - buttonAreaH;
+  drawMenuVegetables(gardenWidth, gardenHeight);
 
-  achievementsButton.x = cx;
-  achievementsButton.y = cy + 105;
+  for (let i = 0; i < buttons.length; i++) {
+    const button = buttons[i];
+    button.x = buttonX;
+    button.y = buttonY + (i - (buttons.length - 1) / 2) * step;
+    button.w = min(280, width - 28);
+    button.h = step * (i === 0 ? 0.88 : 0.74);
+    button.textSizeValue = min(i === 0 ? 36 : 27, button.h * 0.48, button.w / 7);
+    drawButton(button);
+  }
+}
 
-  drawButton(playButton);
-  drawButton(tutorialButton);
-  drawButton(achievementsButton);
+function drawMenuGarden() {
+  background("#BFF1FF");
+  const contentH = height - barHeight;
+  push();
+  noStroke();
+  fill("#FFE584");
+  circle(width * 0.83, barHeight + contentH * 0.19, min(width * 0.19, 126));
+
+  fill("#F8FDFF");
+  for (let i = 0; i < 3; i++) {
+    const x = width * (0.14 + i * 0.29);
+    const y = barHeight + contentH * (0.16 + (i % 2) * 0.13);
+    const size = min(width * 0.19, 125);
+    ellipse(x, y, size, size * 0.32);
+    circle(x - size * 0.15, y - size * 0.15, size * 0.39);
+    circle(x + size * 0.12, y - size * 0.11, size * 0.34);
+  }
+
+  fill("#B5E394");
+  ellipse(width * 0.22, height, width * 1.45, contentH * 0.88);
+  fill("#8DD480");
+  ellipse(width * 0.82, height + contentH * 0.12, width * 1.6, contentH * 0.92);
+
+  for (let i = 0; i < 9; i++) {
+    push();
+    translate(width * (i + 0.5) / 9, height - contentH * (0.05 + (i % 3) * 0.055));
+    scale(min(0.78, width / 460, contentH / 320));
+    drawGardenFlower(0, 0);
+    pop();
+  }
+  pop();
+}
+
+function drawMenuVegetables(gardenWidth, gardenHeight) {
+  menuVegetableTargets = [];
+  if (gardenHeight <= 0) return;
+  const size = min(2.45, gardenHeight / 200);
+  const now = millis();
+  const fallDuration = 820;
+  const returnDuration = 540;
+  if (menuSliceAt === null || now >= menuSliceAt + fallDuration + returnDuration) {
+    menuSliceAt = now + random(4300, 5700);
+  }
+
+  const age = now - menuSliceAt;
+  const vegetables = [
+    {type: "carrot", x: gardenWidth * 0.23, ground: 0.92, offset: 430},
+    {type: "broccoli", x: gardenWidth * 0.77, ground: 0.92, offset: 970},
+    {type: "tomato", x: gardenWidth * 0.5, ground: 0.76, offset: 0}
+  ];
+
+  for (const vegetable of vegetables) {
+    const time = age >= 0 && age < fallDuration ? menuSliceAt : now;
+    const phase = ((time + vegetable.offset) % 1800) / 1800;
+    const hop = sin(PI * phase);
+    const squash = max(0, 1 - hop * 7) * 0.13;
+    const groundY = barHeight + gardenHeight * vegetable.ground;
+    const idleY = groundY - size * (34 + hop * 46);
+    const tilt = sin(TWO_PI * phase) * 0.11;
+    const offscreenY = height + 95 * size;
+    const {type, x} = vegetable;
+
+    if (age < 0 || age >= fallDuration) {
+      const rise = age < 0 ? 1 : (age - fallDuration) / returnDuration;
+      const reaction = constrain((now - (menuTapTimes[type] ?? -1000)) / 500, 0, 1);
+      const bounce = sin(PI * reaction);
+      const y = lerp(idleY, offscreenY, (1 - rise) ** 2) - (type === "tomato" ? 30 * size * bounce : 0);
+      let reactionTilt = tilt;
+      if (type === "carrot") reactionTilt += sin(reaction * TWO_PI * 3) * bounce * 0.3;
+      if (type === "broccoli") reactionTilt += TWO_PI * reaction;
+      if (age < 0) menuVegetableTargets.push({type, x, y, radius: 41 * size});
+      push();
+      noStroke();
+      fill(23, 55, 94, (52 - hop * 26) * rise);
+      ellipse(x, groundY, (74 - hop * 20) * size, (13 - hop * 3) * size);
+      pop();
+      drawAnimatedVegetable(type, x, y, size, reactionTilt, 0, squash);
+    } else {
+      const fall = age / fallDuration;
+      const y = lerp(idleY, offscreenY, fall ** 2);
+      for (const half of [-1, 1]) {
+        drawAnimatedVegetable(
+          type, x + half * fall * size * 23, y + half * fall * size * 12,
+          size, tilt + half * fall * 0.9, half, squash * (1 - fall)
+        );
+      }
+
+      if (age < 135) {
+        push();
+        translate(x, idleY);
+        rotate(tilt);
+        scale(size);
+        strokeCap(ROUND);
+        stroke(sky);
+        strokeWeight(9);
+        line(-44, 0, 44, 0);
+        stroke(white);
+        strokeWeight(4);
+        line(-44, 0, 44, 0);
+        pop();
+      }
+    }
+  }
+}
+
+function drawAnimatedVegetable(type, x, y, size, tilt, half, squash) {
+  push();
+  translate(x, y);
+  rotate(tilt);
+  scale(size * (1 + squash), size * (1 - squash));
+  if (half) {
+    drawingContext.save();
+    drawingContext.beginPath();
+    drawingContext.rect(-60, half < 0 ? -65 : 0, 120, 65);
+    drawingContext.clip();
+  }
+
+  drawLevelVegetable(type);
+  if (half < 0) {
+    stroke(navy);
+    strokeWeight(2);
+    line(-15, -8, -7, -12);
+    line(7, -12, 15, -8);
+    noStroke();
+    fill("#79CEFF");
+    ellipse(-13, -3, 5, 7);
+    ellipse(13, -3, 5, 7);
+  }
+  noStroke();
+  fill("#FFB2B5");
+  ellipse(-17, 7, 8, 5);
+  ellipse(17, 7, 8, 5);
+  noFill();
+  stroke(navy);
+  strokeWeight(2.5);
+  strokeCap(ROUND);
+  if (half) arc(0, 11, 13, 10, PI, TWO_PI);
+  else arc(0, 7, 13, 10, 0, PI);
+
+  if (half) drawingContext.restore();
+  pop();
 }
 
 // LEVEL SELECTION
@@ -514,6 +886,14 @@ function drawStarShape(x, y, inner, outer, points) {
 
 function startLevel(level) {
   selectedLevel = level;
+  menuMusic.pause();
+  stopLevelAudio();
+  levelMusic = new Audio("assets/level " + level + " music.mp3");
+  levelMusic.loop = true;
+  levelMusic.volume = audioVolume.music / 100;
+  levelMusic.play().catch(() => {});
+  playedSwipeSound = false;
+  choppedVegetables = [];
 
   vegetables = [];
   bombs = [];
@@ -614,6 +994,7 @@ function drawGame() {
     updateBombs();
   }
 
+  drawChoppedVegetables();
   updateParticles();
   drawSwipeTrail();
   updateFloatingTexts();
@@ -634,7 +1015,7 @@ function drawGame() {
 
   checkPointAchievement();
   if (stars <= 0) {
-    gameOver = true;
+    failLevel();
   } else if (veggieCount >= goal) {
     completeLevel();
   }
@@ -767,6 +1148,21 @@ function updateVegetables() {
       }
 
       vegetables.splice(i, 1);
+    }
+  }
+}
+
+function drawChoppedVegetables() {
+  const now = millis();
+  choppedVegetables = choppedVegetables.filter(piece => now - piece.started < 560);
+  for (const piece of choppedVegetables) {
+    const fall = (now - piece.started) / 560;
+    for (const half of [-1, 1]) {
+      drawAnimatedVegetable(
+        piece.type, piece.x + half * 40 * fall,
+        piece.y - 36 * fall + 235 * fall ** 2 + half * 10 * fall,
+        piece.size, half * fall, half, 0
+      );
     }
   }
 }
@@ -1041,12 +1437,13 @@ function hitVegetable(v) {
   }
 
   if (v.hp <= 0) {
-  v.sliced = true;
+    v.sliced = true;
+    playGameSound("chop");
+    choppedVegetables.push({type: v.type, x: v.x, y: v.y, size: v.size, started: millis()});
 
-  // Giant vegetables count as 3
-  veggieCount += (v.giant || v.bouncing) ? 3 : 1;
-
-  swipeHits++;
+    // Giant vegetables count as 3
+    veggieCount += (v.giant || v.bouncing) ? 3 : 1;
+    swipeHits++;
 
     let points = (v.giant || v.bouncing) ? 3 : 1;
     if (critical) points *= 2;
@@ -1132,7 +1529,23 @@ function checkCombo() {
 }
 
 // MOUSE SWIPING
+function mouseMoved() {
+  if (screen !== "game" || levelComplete || gameOver || showTutorial ||
+      dragging || mouseY <= barHeight ||
+      (mouseX === pmouseX && mouseY === pmouseY)) return;
+
+  swipeHits = 0;
+  comboAwarded = 0;
+  sliceVegetables(screenToWorld(pmouseX, pmouseY), screenToWorld(mouseX, mouseY));
+}
+
 function mouseDragged() {
+  if (screen === "settings" && activeVolumeSlider !== null) {
+    setVolumeFromSlider(activeVolumeSlider);
+    return false;
+  }
+
+
   if (
     screen !== "game" ||
     levelComplete ||
@@ -1144,6 +1557,11 @@ function mouseDragged() {
     dragging = true;
     swipeHits = 0;
     comboAwarded = 0;
+  }
+
+  if (!playedSwipeSound && (mouseX !== pmouseX || mouseY !== pmouseY)) {
+    playGameSound("slash");
+    playedSwipeSound = true;
   }
 
   let current = screenToWorld(mouseX, mouseY);
@@ -1173,6 +1591,7 @@ function mouseDragged() {
 
     if (d < 42) {
       bomb.hit = true;
+      playGameSound("explosion");
       stars = max(0, stars - 1);
       bombFlashTime = millis();
 
@@ -1192,13 +1611,17 @@ function mouseDragged() {
 
       if (stars <= 0) {
         unlockAchievement("bombDeath");
-        gameOver = true;
+        failLevel();
         return false;
       }
     }
   }
 
-  // Vegetable collision
+  sliceVegetables(previous, current);
+  return false;
+}
+
+function sliceVegetables(previous, current) {
   for (let v of vegetables) {
     if (v.sliced) continue;
 
@@ -1232,11 +1655,11 @@ function mouseDragged() {
 
     if (levelComplete) break;
   }
-
-  return false;
 }
 
 function mouseReleased() {
+  activeVolumeSlider = null;
+  playedSwipeSound = false;
   dragging = false;
   swipeHits = 0;
   comboAwarded = 0;
@@ -1267,6 +1690,7 @@ function completeLevel() {
   if (levelComplete || gameOver) return;
 
   levelComplete = true;
+  playLevelResult("victory");
 
   levelStars[selectedLevel] = max(
     levelStars[selectedLevel] || 0,
@@ -1360,6 +1784,20 @@ function drawGameOver() {
 }
 
 // ACHIEVEMENTS
+function achievementListLayout() {
+  const top = barHeight + 120;
+  const bottom = height - 24;
+  const rowH = 91;
+  const visibleH = max(0, bottom - top);
+  const maxScroll = max(0, achievementDefinitions.length * rowH - visibleH);
+  return {top, bottom, rowH, visibleH, maxScroll, cardW: min(width - 24, 620)};
+}
+
+function achievementRewardButton(layout, y, label) {
+  const w = min(112, layout.cardW * 0.32);
+  return makeButton(width / 2 + layout.cardW / 2 - w / 2 - 12, y, w, 38, label, yellow, 14);
+}
+
 function drawAchievements() {
   background(cream);
   const completed = achievementDefinitions.filter(a => achievements[a.id]).length;
@@ -1373,11 +1811,8 @@ function drawAchievements() {
   text(completed + " / " + achievementDefinitions.length + " unlocked", width/2, barHeight+83);
   pop();
 
-  const top = barHeight + 120;
-  const rowH = 91;
-  const bottom = height - 20;
-  const visibleH = max(0, bottom - top);
-  const maxScroll = max(0, achievementDefinitions.length * rowH - visibleH);
+  const layout = achievementListLayout();
+  const {top, bottom, rowH, visibleH, maxScroll, cardW} = layout;
   achievementScroll = constrain(achievementScroll, 0, maxScroll);
   push();
   // Clip the scrolling list to the content area using p5's drawing context.
@@ -1395,22 +1830,31 @@ function drawAchievements() {
     stroke(unlocked ? "#43BE64" : "#BCC3CA");
     strokeWeight(3);
     fill(unlocked ? "#E6F8DF" : "#E7E9E9");
-    const cardW = min(width-24, 620);
     rect(width/2, y, cardW, 76, 15);
     noStroke();
     fill(navy);
     textAlign(LEFT,CENTER);
-    textSize(27);
-    text(unlocked ? a.icon : "🔒", width/2-cardW/2+15, y);
+    const reward = achievementRewardButton(layout, y, "Claim +1 ★");
+    const left = width / 2 - cardW / 2 + 14;
+    const textX = left + 34;
+    const textW = reward.x - reward.w / 2 - textX - 8;
+    const claimed = claimedAchievements[a.id];
+    textSize(22);
+    text(unlocked ? a.icon : "🔒", left, y);
+    rectMode(CORNER);
     textStyle(BOLD);
-    textSize(min(20, width/22));
-    text(a.title, width/2-cardW/2+65, y-13);
+    textSize(min(20, width / 20));
+    text(a.title, textX, y - 32, textW, 32);
     textStyle(NORMAL);
-    textSize(min(15, width/29));
-    text(a.detail, width/2-cardW/2+65, y+14);
-    textAlign(RIGHT,CENTER);
-    textSize(14);
-    text(unlocked ? "DONE" : "LOCKED", width/2+cardW/2-13, y-15);
+    textSize(min(14, width / 25));
+    text(a.detail, textX, y, textW, 34);
+    if (unlocked && !claimed) {
+      drawButton(reward);
+    } else {
+      textAlign(CENTER, CENTER);
+      textSize(14);
+      text(claimed ? "Claimed" : "Locked · +1 ★", reward.x, y);
+    }
     pop();
   }
   drawingContext.restore();
@@ -1427,7 +1871,8 @@ function drawAchievements() {
 
 function mouseWheel(event) {
   if (screen === "achievements") {
-    achievementScroll += event.delta;
+    const {maxScroll} = achievementListLayout();
+    achievementScroll = constrain(achievementScroll + event.delta, 0, maxScroll);
     return false;
   }
 }
@@ -1624,8 +2069,8 @@ function makeButton(x, y, w, h, label, buttonColor, textSizeValue) {
   return {x, y, w, h, label, buttonColor, textSizeValue};
 }
 
-function drawButton(btn) {
-  let hovering = isMouseOver(btn);
+function drawButton(btn, interactive = true) {
+  let hovering = interactive && isMouseOver(btn);
   let scaleAmount = hovering ? 1.06 : 1;
 
   push();
@@ -1655,10 +2100,93 @@ function isMouseOver(btn) {
          mouseY < btn.y + btn.h / 2;
 }
 
+// AUDIO SETTINGS
+function volumeSliderLayout(index) {
+  const contentH = max(0, height - barHeight);
+  const rowHeight = min(90, contentH * 0.29);
+  const sliderWidth = max(1, min(420, width - 76));
+  return {
+    left: (width - sliderWidth) / 2,
+    right: (width + sliderWidth) / 2,
+    y: barHeight + contentH * 0.54 + index * rowHeight,
+    rowHeight
+  };
+}
+
+function drawSettings() {
+  const contentH = max(0, height - barHeight);
+  push();
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  noStroke();
+  fill(navy);
+  textSize(min(32, contentH * 0.13));
+  text("Audio Settings", width / 2, barHeight + contentH * 0.19);
+
+  for (let i = 0; i < audioControls.length; i++) {
+    const {key, label} = audioControls[i];
+    const {left, right, y, rowHeight} = volumeSliderLayout(i);
+    const knob = lerp(left, right, audioVolume[key] / 100);
+    const radius = min(12, rowHeight * 0.14);
+
+    textSize(min(21, rowHeight * 0.27));
+    text(label + "  " + audioVolume[key] + "%", width / 2, y - rowHeight * 0.33);
+    strokeCap(ROUND);
+    strokeWeight(radius);
+    stroke(navy);
+    line(left, y, right, y);
+    stroke(i === 0 ? sky : pink);
+    line(left, y, knob, y);
+    stroke(navy);
+    strokeWeight(2);
+    fill(white);
+    circle(knob, y, radius * 2);
+    noStroke();
+    fill(navy);
+  }
+  pop();
+}
+
+function setVolumeFromSlider(index) {
+  const {key} = audioControls[index];
+  const {left, right} = volumeSliderLayout(index);
+  const value = Math.round(constrain((mouseX - left) / (right - left), 0, 1) * 100);
+  if (value === audioVolume[key]) return;
+  audioVolume[key] = value;
+
+  if (key === "music") {
+    menuMusic.volume = value / 100;
+    if (levelMusic) levelMusic.volume = value / 100;
+  } else {
+    if (effectOutput) effectOutput.gain.value = value / 100;
+    for (const [name, sound] of Object.entries(gameSounds)) {
+      if (!boostedEffects.has(name)) sound.volume = value / 100;
+    }
+  }
+
+  try {
+    localStorage.setItem(audioSettingsKey, JSON.stringify({
+      ...audioVolume,
+      effectsDefaultUpdated: true
+    }));
+  } catch (error) {
+    console.warn("Could not save audio settings:", error);
+  }
+}
+
 // MOUSE CONTROLS
 function mousePressed() {
+  handleMousePress();
+  if (screen !== "game" && menuMusic.paused) {
+    menuMusic.play().catch(() => {});
+  }
+  return false;
+}
+
+function handleMousePress() {
   if (showTutorial) {
     if (isMouseOver(closeButton)) {
+      playGameSound("click");
       showTutorial = false;
     }
     return false;
@@ -1666,11 +2194,14 @@ function mousePressed() {
 
   if (screen === "game" && gameOver) {
     if (isMouseOver(retryButton)) {
+      playGameSound("click");
       startLevel(selectedLevel);
       return false;
     }
 
     if (isMouseOver(backButton)) {
+      playGameSound("click");
+      stopLevelAudio();
       screen = "levels";
       resetCamera();
       return false;
@@ -1682,19 +2213,24 @@ function mousePressed() {
     levelComplete &&
     isMouseOver(backButton)
   ) {
+    playGameSound("click");
+    stopLevelAudio();
     screen = "levels";
     resetCamera();
     return false;
   }
 
-  if (isMouseOver(homeButton)) {
-    screen = "menu";
+  if (screen !== "menu" && isMouseOver(menuBackButton)) {
+    playGameSound("click");
+    stopLevelAudio();
+    screen = screen === "game" ? "levels" : "menu";
     resetCamera();
     return false;
   }
 
   if (screen === "game") {
     if (!levelComplete && !gameOver) {
+      playedSwipeSound = false;
       dragging = true;
       swipeHits = 0;
       comboAwarded = 0;
@@ -1705,12 +2241,56 @@ function mousePressed() {
 
   if (screen === "menu") {
     if (isMouseOver(playButton)) {
+      playGameSound("click");
       screen = "levels";
     } else if (isMouseOver(tutorialButton)) {
+      playGameSound("click");
       showTutorial = true;
       tutorialStartTime = millis();
     } else if (isMouseOver(achievementsButton)) {
+      playGameSound("click");
+      achievementScroll = 0;
       screen = "achievements";
+      loadAchievementClaims();
+    } else if (isMouseOver(settingsButton)) {
+      playGameSound("click");
+      screen = "settings";
+    } else if (mouseY > barHeight) {
+      const target = menuVegetableTargets.findLast(vegetable =>
+        dist(mouseX, mouseY, vegetable.x, vegetable.y) < vegetable.radius
+      );
+      if (target) {
+        menuTapTimes[target.type] = millis();
+        playGameSound("click");
+      }
+    }
+  } else if (screen === "settings") {
+    for (let i = 0; i < audioControls.length; i++) {
+      const {left, right, y, rowHeight} = volumeSliderLayout(i);
+      if (mouseX >= left - 15 && mouseX <= right + 15 &&
+          abs(mouseY - y) <= min(22, rowHeight * 0.3)) {
+        activeVolumeSlider = i;
+        setVolumeFromSlider(i);
+        break;
+      }
+    }
+  } else if (screen === "achievements") {
+    const layout = achievementListLayout();
+    const {top, bottom, rowH, maxScroll} = layout;
+    if (mouseY >= top && mouseY < bottom) {
+      const scroll = constrain(achievementScroll, 0, maxScroll);
+      for (let i = 0; i < achievementDefinitions.length; i++) {
+        const {id} = achievementDefinitions[i];
+        const y = top + i * rowH - scroll + 38;
+        const reward = achievementRewardButton(layout, y, "");
+        if (isMouseOver(reward)) {
+          if (claimAchievement(id)) {
+            playGameSound("click");
+            flyingAchievementStars.push({x: reward.x, y: reward.y, started: millis()});
+          }
+          break;
+        }
+      }
     }
   } else if (screen === "levels") {
     let s = getMapScale();
@@ -1720,6 +2300,7 @@ function mousePressed() {
     for (let lvl of levelButtons) {
       if (dist(mx, my, lvl.x, lvl.y) < 55) {
         if (lvl.level <= unlockedLevel && lvl.level <= 6) {
+          playGameSound("click");
           startLevel(lvl.level);
         }
         return false;
