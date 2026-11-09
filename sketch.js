@@ -12,6 +12,10 @@ let BaseArr = [];
 const BaseWidth = 800;
 const BaseHeight = 600;
 const rectAng = 12;
+
+let cream, sky, navy, yellow, pink, blue, white;
+let dirtBackground;
+
 function setup() {
     pixelDensity(1);
     w = window.innerWidth;
@@ -24,6 +28,13 @@ function setup() {
         s = h/600.0;
         w = s*800;
     }
+    cream = color("#F1FADF");
+    sky = color("#2BD9EE");
+    navy = color("#17375E");
+    yellow = color("#FFD43B");
+    pink = color("#F26BAA");
+    blue = color("#3D8BFF");
+    white = color("#FFFFFF");
     createCanvas(800, 600);
     mouse = false;
     background(225);
