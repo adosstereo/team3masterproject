@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Vegetable Shinobi</title>
+<style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center;background:#f4fbe8}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+</head><body>
+<script>
+// Card is 275x235 units, drawn at 2x
+let hov = false;
+
+function setup() {
+  const c = createCanvas(550, 470);
+  c.mouseOver(() => hov = true);
+  c.mouseOut(() => hov = false);
+}
+
+function draw() {
+  scale(2);
+  background('#d49a9a');
+  const navy = '#1a2a4a';
+  stroke(navy); strokeWeight(2);
+
+  // hover animation: vegetable bobs, stem wiggles
+  const t = frameCount * 0.1;
+  const bob = hov ? sin(t * 2) * 5 : 0;
+  const wig = hov ? sin(t * 3) * 6 : 0;
+
+  // stem
+  noFill();
+  line(143, 44 + bob, 150 + wig, 18 + bob);
+
+  // vegetable
+  fill('#e07bb0');
+  ellipse(141, 91 + bob, 98, 98);
+
+  // title
+  noStroke(); fill(navy);
+  textFont('Arial'); textStyle(BOLD); textSize(32); textAlign(LEFT, BASELINE);
+  text('Vegetable', 18, 196);
+  text('Shinobi', 18, 229);
+
+  // card border
+  noFill(); stroke(navy); strokeWeight(2);
+  rect(1, 1, 273, 233);
+}
+</script></body></html>
