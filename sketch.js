@@ -15,6 +15,7 @@ let levelStars = {1:0, 2:0, 3:0, 4:0, 5:0, 6:0};
 let levelButtons = [];
 let achievements = {};
 let claimedAchievements = {};
+const achievementStarReward = 3;
 const achievementClaimsKey = "vegetableShinobiAchievementClaims";
 let achievementToast = null;
 let achievementScroll = 0;
@@ -29,7 +30,7 @@ const achievementDefinitions = [
   {id:"points150", title:"Point Master", detail:"Score 150 points in one level", icon:"🎯"}
 ];
 
-let playButton, tutorialButton, achievementsButton, settingsButton;
+let playButton, tutorialButton, achievementsButton, settingsButton, customizeButton;
 let menuBackButton, menuHomeButton;
 let closeButton, backButton, retryButton;
 
@@ -55,7 +56,7 @@ let bombFlashTime = -1000;
 let screenShake = 0;
 
 let critChance = 0.15;
-let dragging = false;
+let previousSwipePoint = null;
 let swipeHits = 0;
 let comboAwarded = 0;
 
@@ -194,9 +195,13 @@ function preload() {
 
 // SETUP
 function setup() {
-  createCanvas(windowWidth, windowHeight);
+  const canvas = createCanvas(windowWidth, windowHeight);
+  canvas.elt.addEventListener("pointerleave", mouseReleased);
+  canvas.elt.addEventListener("pointercancel", mouseReleased);
+  window.addEventListener("blur", mouseReleased);
   frameRate(60);
   loadAudioSettings();
+  loadVegetableOutfits();
   loadGameSounds();
 
   cream = color("#F1FADF");
@@ -211,6 +216,7 @@ function setup() {
   tutorialButton = makeButton(0, 0, 280, 75, "Tutorial", yellow, 30);
   achievementsButton = makeButton(0, 0, 280, 75, "Achievements", pink, 27);
   settingsButton = makeButton(0, 0, 280, 75, "Settings", white, 27);
+  customizeButton = makeButton(0, 0, 280, 75, "Customize", "#B9E995", 27);
 
   menuHomeButton = makeButton(53, 35, 84, 42, "Home", white, 17);
   menuBackButton = makeButton(53, 35, 84, 42, "← Back", white, 17);
@@ -244,6 +250,7 @@ function draw() {
   else if (screen === "game") drawGame();
   else if (screen === "achievements") drawAchievements();
   else if (screen === "settings") drawSettings();
+  else if (screen === "customize") drawCustomization();
 
   drawTopBar();
 
@@ -317,8 +324,9 @@ function claimAchievement(id) {
   }
 }
 
-function getClaimedAchievementStars() {
-  return achievementDefinitions.filter(a => claimedAchievements[a.id]).length;
+function getAvailableStars() {
+  const claimedCount = achievementDefinitions.filter(a => claimedAchievements[a.id]).length;
+  return max(0, claimedCount * achievementStarReward - outfitStarsSpent);
 }
 
 function unlockAchievement(id) {
@@ -424,7 +432,7 @@ function drawTopBar() {
   if (screen === "menu") drawButton(menuHomeButton, false);
   else drawButton(menuBackButton);
 
-  if (screen === "menu" || screen === "achievements") {
+  if (screen === "menu" || screen === "achievements" || screen === "customize") {
     drawAchievementStarCounter();
   }
 }
@@ -464,7 +472,7 @@ function drawAchievementStarCounter() {
   textAlign(CENTER, CENTER);
   textStyle(BOLD);
   textSize(22);
-  text(max(0, getClaimedAchievementStars() - pending), 12, 0);
+  text(max(0, getAvailableStars() - pending), 12, 0);
   pop();
 
   for (const star of flyingAchievementStars) {
@@ -496,7 +504,7 @@ function drawMenu() {
   const wide = width >= 650;
   const buttonX = wide ? width * 0.68 : width / 2;
   const buttonAreaH = wide ? contentH : contentH * 0.56;
-  const buttons = [playButton, tutorialButton, achievementsButton, settingsButton];
+  const buttons = [playButton, tutorialButton, achievementsButton, customizeButton, settingsButton];
   const step = min(100, buttonAreaH / buttons.length);
   const buttonY = height - buttonAreaH / 2;
 
@@ -620,7 +628,7 @@ function drawMenuVegetables(gardenWidth, gardenHeight) {
   }
 }
 
-function drawAnimatedVegetable(type, x, y, size, tilt, half, squash) {
+function drawAnimatedVegetable(type, x, y, size, tilt, half, squash, dressed = false) {
   push();
   translate(x, y);
   rotate(tilt);
@@ -628,7 +636,7 @@ function drawAnimatedVegetable(type, x, y, size, tilt, half, squash) {
   if (half) {
     drawingContext.save();
     drawingContext.beginPath();
-    drawingContext.rect(-60, half < 0 ? -65 : 0, 120, 65);
+    drawingContext.rect(-60, half < 0 ? -95 : 0, 120, half < 0 ? 95 : 65);
     drawingContext.clip();
   }
 
@@ -654,6 +662,7 @@ function drawAnimatedVegetable(type, x, y, size, tilt, half, squash) {
   if (half) arc(0, 11, 13, 10, PI, TWO_PI);
   else arc(0, 7, 13, 10, 0, PI);
 
+  if (dressed) drawVegetableAccessories(type);
   if (half) drawingContext.restore();
   pop();
 }
@@ -905,7 +914,7 @@ function startLevel(level) {
   veggieCount = 0;
   stars = 3;
 
-  dragging = false;
+  previousSwipePoint = null;
   swipeHits = 0;
   comboAwarded = 0;
 
@@ -1161,7 +1170,7 @@ function drawChoppedVegetables() {
       drawAnimatedVegetable(
         piece.type, piece.x + half * 40 * fall,
         piece.y - 36 * fall + 235 * fall ** 2 + half * 10 * fall,
-        piece.size, half * fall, half, 0
+        piece.size, half * fall, half, 0, true
       );
     }
   }
@@ -1172,6 +1181,7 @@ function drawGameVegetable(v) {
   translate(v.x, v.y);
   scale(v.size);
   drawLevelVegetable(v.type);
+  drawVegetableAccessories(v.type);
   pop();
 
   if (v.giant || v.bouncing) {
@@ -1529,17 +1539,11 @@ function checkCombo() {
 }
 
 // MOUSE SWIPING
-function mouseMoved() {
-  if (screen !== "game" || levelComplete || gameOver || showTutorial ||
-      dragging || mouseY <= barHeight ||
-      (mouseX === pmouseX && mouseY === pmouseY)) return;
-
-  swipeHits = 0;
-  comboAwarded = 0;
-  sliceVegetables(screenToWorld(pmouseX, pmouseY), screenToWorld(mouseX, mouseY));
+function cursorInPlayArea() {
+  return mouseX >= 0 && mouseX < width && mouseY > barHeight && mouseY < height;
 }
 
-function mouseDragged() {
+function mouseDragged(event) {
   if (screen === "settings" && activeVolumeSlider !== null) {
     setVolumeFromSlider(activeVolumeSlider);
     return false;
@@ -1553,19 +1557,22 @@ function mouseDragged() {
     showTutorial
   ) return false;
 
-  if (!dragging) {
-    dragging = true;
-    swipeHits = 0;
-    comboAwarded = 0;
+  if (!previousSwipePoint) return false;
+  if (!cursorInPlayArea() ||
+      (typeof event?.buttons === "number" && !(event.buttons & 1))) {
+    mouseReleased();
+    return false;
   }
 
-  if (!playedSwipeSound && (mouseX !== pmouseX || mouseY !== pmouseY)) {
+  const previous = screenToWorld(previousSwipePoint.x, previousSwipePoint.y);
+  const current = screenToWorld(mouseX, mouseY);
+  if (mouseX === previousSwipePoint.x && mouseY === previousSwipePoint.y) return false;
+  previousSwipePoint = {x: mouseX, y: mouseY};
+
+  if (!playedSwipeSound) {
     playGameSound("slash");
     playedSwipeSound = true;
   }
-
-  let current = screenToWorld(mouseX, mouseY);
-  let previous = screenToWorld(pmouseX, pmouseY);
 
   swipeTrail.push({
     x: current.x,
@@ -1660,7 +1667,7 @@ function sliceVegetables(previous, current) {
 function mouseReleased() {
   activeVolumeSlider = null;
   playedSwipeSound = false;
-  dragging = false;
+  previousSwipePoint = null;
   swipeHits = 0;
   comboAwarded = 0;
   swipeTrail = [];
@@ -1834,7 +1841,7 @@ function drawAchievements() {
     noStroke();
     fill(navy);
     textAlign(LEFT,CENTER);
-    const reward = achievementRewardButton(layout, y, "Claim +1 ★");
+    const reward = achievementRewardButton(layout, y, "Claim +" + achievementStarReward + " ★");
     const left = width / 2 - cardW / 2 + 14;
     const textX = left + 34;
     const textW = reward.x - reward.w / 2 - textX - 8;
@@ -1853,7 +1860,7 @@ function drawAchievements() {
     } else {
       textAlign(CENTER, CENTER);
       textSize(14);
-      text(claimed ? "Claimed" : "Locked · +1 ★", reward.x, y);
+      text(claimed ? "Claimed" : "Locked · +" + achievementStarReward + " ★", reward.x, y);
     }
     pop();
   }
@@ -2100,6 +2107,212 @@ function isMouseOver(btn) {
          mouseY < btn.y + btn.h / 2;
 }
 
+// VEGETABLE CUSTOMIZATION
+const outfitSaveKey = "vegetableShinobiOutfits";
+const outfitOptions = {
+  hat: ["None", "Crown", "Top Hat", "Party Hat", "Pirate Hat"],
+  glasses: ["None", "Sunglasses", "Round Glasses", "Star Glasses"]
+};
+const hatPositions = {carrot: -33, tomato: -37, broccoli: -51, corn: -39, eggplant: -36};
+const outfitPrices = {hat: 2, glasses: 1};
+let vegetableOutfits = {};
+let ownedAccessories = [];
+let outfitStarsSpent = 0;
+let customizationMessage = "";
+let outfitVegetableIndex = 0;
+
+function loadVegetableOutfits() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(outfitSaveKey));
+    const outfits = saved?.outfits ?? saved;
+    ownedAccessories = Array.isArray(saved?.owned) ? saved.owned : [];
+    outfitStarsSpent = Number.isInteger(saved?.spent) ? max(0, saved.spent) : 0;
+    for (const type of veggieTypes) {
+      const outfit = outfits?.[type];
+      vegetableOutfits[type] = {};
+      for (const [slot, choices] of Object.entries(outfitOptions)) {
+        const choice = outfit?.[slot];
+        if (!choices.includes(choice)) continue;
+        const accessory = slot + ":" + choice;
+        if (!saved?.outfits && choice !== "None" && !ownedAccessories.includes(accessory)) {
+          ownedAccessories.push(accessory);
+        }
+        if (choice === "None" || ownedAccessories.includes(accessory)) {
+          vegetableOutfits[type][slot] = choice;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("Could not load vegetable outfits:", error);
+  }
+}
+
+function drawVegetableAccessories(type) {
+  const outfit = vegetableOutfits[type];
+  if (!outfit) return;
+
+  push();
+  rectMode(CENTER);
+  stroke(navy);
+  strokeWeight(2.3);
+  strokeJoin(ROUND);
+
+  push();
+  translate(0, hatPositions[type]);
+  if (outfit.hat === "Crown") {
+    fill(yellow);
+    beginShape();
+    vertex(-18, 4);
+    vertex(-22, -15);
+    vertex(-10, -8);
+    vertex(0, -23);
+    vertex(10, -8);
+    vertex(22, -15);
+    vertex(18, 4);
+    endShape(CLOSE);
+    fill(pink);
+    circle(0, -6, 6);
+  } else if (outfit.hat === "Top Hat") {
+    fill(navy);
+    rect(0, -10, 29, 23, 4);
+    fill(sky);
+    rect(0, -2, 29, 6, 2);
+    fill(navy);
+    rect(0, 3, 44, 6, 3);
+  } else if (outfit.hat === "Party Hat") {
+    fill(pink);
+    triangle(-17, 4, 17, 4, 2, -26);
+    fill(yellow);
+    circle(2, -27, 8);
+    circle(1, -6, 5);
+  } else if (outfit.hat === "Pirate Hat") {
+    fill(navy);
+    ellipse(0, -8, 31, 24);
+    rect(0, 0, 47, 12, 5);
+    fill(white);
+    drawStarShape(0, -6, 3, 7, 5);
+  }
+  pop();
+
+  if (outfit.glasses && outfit.glasses !== "None") {
+    line(-4, -1, 4, -1);
+    for (const x of [-10, 10]) {
+      if (outfit.glasses === "Sunglasses") {
+        fill(navy);
+        rect(x, 0, 16, 11, 3);
+        stroke(white);
+        line(x - 4, 1, x, -2);
+        stroke(navy);
+      } else if (outfit.glasses === "Round Glasses") {
+        noFill();
+        circle(x, 0, 15);
+      } else if (outfit.glasses === "Star Glasses") {
+        fill(yellow);
+        drawStarShape(x, 0, 5, 9, 5);
+      }
+    }
+  }
+  pop();
+}
+
+function customizationRows() {
+  const contentH = max(0, height - barHeight);
+  const type = veggieTypes[outfitVegetableIndex];
+  const outfit = vegetableOutfits[type] ?? {};
+  const panelWidth = min(620, width - 20);
+  const labels = {
+    "Sunglasses": "Shades", "Round Glasses": "Round", "Star Glasses": "Stars",
+    "Party Hat": "Party", "Pirate Hat": "Pirate"
+  };
+  const rows = [
+    {label: "Vegetable", slot: "vegetable", choices: veggieTypes, selected: type},
+    {label: "Hat", slot: "hat", choices: outfitOptions.hat, selected: outfit.hat ?? "None"},
+    {label: "Glasses", slot: "glasses", choices: outfitOptions.glasses, selected: outfit.glasses ?? "None"}
+  ];
+
+  return rows.map((row, index) => {
+    const y = barHeight + contentH * (0.56 + index * 0.17);
+    const step = panelWidth / row.choices.length;
+    const buttonH = min(43, contentH * 0.092);
+    const buttons = row.choices.map((choice, i) => {
+      let label = row.slot === "vegetable"
+        ? choice[0].toUpperCase() + choice.slice(1)
+        : labels[choice] ?? choice;
+      const accessory = row.slot + ":" + choice;
+      const price = choice !== "None" && !ownedAccessories.includes(accessory)
+        ? outfitPrices[row.slot] ?? 0 : 0;
+      if (price) label += " " + price + "★";
+      return {
+        choice, accessory, price,
+        ...makeButton(width / 2 + (i - (row.choices.length - 1) / 2) * step,
+          y, step - 7, buttonH, label, choice === row.selected ? yellow : white,
+          min(17, buttonH * 0.47, (step - 10) / (label.length * 0.62)))
+      };
+    });
+    return {...row, labelY: y - buttonH * 0.76, buttons};
+  });
+}
+
+function drawCustomization() {
+  const contentH = max(0, height - barHeight);
+  const type = veggieTypes[outfitVegetableIndex];
+  push();
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  noStroke();
+  fill(navy);
+  textSize(min(32, contentH * 0.12, width * 0.09));
+  text("Customize", width / 2, barHeight + contentH * 0.085);
+
+  drawAnimatedVegetable(type, width / 2, barHeight + contentH * 0.32,
+    min(2.1, contentH / 400), 0, 0, 0, true);
+
+  textSize(min(17, contentH * 0.034, width / 27));
+  text(customizationMessage || "Pick a veggie and its outfit", width / 2, barHeight + contentH * 0.45);
+  for (const row of customizationRows()) {
+    text(row.label, width / 2, row.labelY);
+    for (const button of row.buttons) drawButton(button);
+  }
+  pop();
+}
+
+function handleCustomizationPress() {
+  loadVegetableOutfits();
+  for (const row of customizationRows()) {
+    const button = row.buttons.find(isMouseOver);
+    if (!button) continue;
+
+    playGameSound("click");
+    if (row.slot === "vegetable") {
+      outfitVegetableIndex = veggieTypes.indexOf(button.choice);
+      customizationMessage = "";
+    } else {
+      loadAchievementClaims();
+      if (button.price > getAvailableStars()) {
+        customizationMessage = "Claim more stars in Achievements";
+        return;
+      }
+
+      const type = veggieTypes[outfitVegetableIndex];
+      const outfit = {...vegetableOutfits[type], [row.slot]: button.choice};
+      const outfits = {...vegetableOutfits, [type]: outfit};
+      const owned = button.price ? [...ownedAccessories, button.accessory] : ownedAccessories;
+      const spent = outfitStarsSpent + button.price;
+      try {
+        localStorage.setItem(outfitSaveKey, JSON.stringify({outfits, owned, spent}));
+        vegetableOutfits = outfits;
+        ownedAccessories = owned;
+        outfitStarsSpent = spent;
+        customizationMessage = button.price ? "Unlocked " + button.choice + "!" : "";
+      } catch (error) {
+        customizationMessage = "Could not save your outfit";
+        console.warn("Could not save vegetable outfit:", error);
+      }
+    }
+    return;
+  }
+}
+
 // AUDIO SETTINGS
 function volumeSliderLayout(index) {
   const contentH = max(0, height - barHeight);
@@ -2175,15 +2388,15 @@ function setVolumeFromSlider(index) {
 }
 
 // MOUSE CONTROLS
-function mousePressed() {
-  handleMousePress();
+function mousePressed(event) {
+  handleMousePress(event);
   if (screen !== "game" && menuMusic.paused) {
     menuMusic.play().catch(() => {});
   }
   return false;
 }
 
-function handleMousePress() {
+function handleMousePress(event) {
   if (showTutorial) {
     if (isMouseOver(closeButton)) {
       playGameSound("click");
@@ -2229,9 +2442,10 @@ function handleMousePress() {
   }
 
   if (screen === "game") {
-    if (!levelComplete && !gameOver) {
+    if (!levelComplete && !gameOver && cursorInPlayArea() &&
+        (event?.button === undefined || event.button === 0)) {
       playedSwipeSound = false;
-      dragging = true;
+      previousSwipePoint = {x: mouseX, y: mouseY};
       swipeHits = 0;
       comboAwarded = 0;
       swipeTrail = [];
@@ -2252,6 +2466,12 @@ function handleMousePress() {
       achievementScroll = 0;
       screen = "achievements";
       loadAchievementClaims();
+    } else if (isMouseOver(customizeButton)) {
+      playGameSound("click");
+      loadAchievementClaims();
+      loadVegetableOutfits();
+      customizationMessage = "";
+      screen = "customize";
     } else if (isMouseOver(settingsButton)) {
       playGameSound("click");
       screen = "settings";
@@ -2264,6 +2484,8 @@ function handleMousePress() {
         playGameSound("click");
       }
     }
+  } else if (screen === "customize") {
+    handleCustomizationPress();
   } else if (screen === "settings") {
     for (let i = 0; i < audioControls.length; i++) {
       const {left, right, y, rowHeight} = volumeSliderLayout(i);
@@ -2286,7 +2508,11 @@ function handleMousePress() {
         if (isMouseOver(reward)) {
           if (claimAchievement(id)) {
             playGameSound("click");
-            flyingAchievementStars.push({x: reward.x, y: reward.y, started: millis()});
+            for (let star = 0; star < achievementStarReward; star++) {
+              flyingAchievementStars.push({
+                x: reward.x + (star - 1) * 25, y: reward.y, started: millis()
+              });
+            }
           }
           break;
         }
@@ -2313,6 +2539,7 @@ function handleMousePress() {
 
 // WINDOW RESIZE
 function windowResized() {
+  mouseReleased();
   resizeCanvas(windowWidth, windowHeight);
   resetCamera();
 }
