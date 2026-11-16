@@ -13,7 +13,7 @@ const BaseWidth = 800;
 const BaseHeight = 600;
 const rectAng = 12;
 
-let cream, sky, navy, yellow, pink, blue, white;
+let cream, sky, navy, yellow, pink, mediumBlue, white;
 let dirtBackground;
 
 function setup() {
@@ -28,13 +28,13 @@ function setup() {
         s = h/600.0;
         w = s*800;
     }
-    cream = color("#F1FADF");
-    sky = color("#2BD9EE");
-    navy = color("#17375E");
-    yellow = color("#FFD43B");
-    pink = color("#F26BAA");
-    blue = color("#3D8BFF");
-    white = color("#FFFFFF");
+    cream = color(241, 250, 223);
+    sky = color(43, 217, 238);
+    navy = color(23, 55, 94);
+    yellow = color(255, 212, 59);
+    pink = color(242, 107, 170);
+    mediumBlue = color(61, 139, 255);
+    white = color(255, 255, 255);
     createCanvas(800, 600);
     mouse = false;
     background(225);
@@ -64,10 +64,10 @@ function setup() {
 }
 function buttons(a) {
     //background
-    fill(255, 255, 255);
+    fill(cream);
     rect(0,0,w,h);
-    fill(255, 255, 150);
-    rect(0,0,w,150*s);
+    fill(mediumBlue);
+    rect(0,0,w,600*(70/600)*s);
     //foreground
     var b = 1;
     var c = 0;
@@ -86,25 +86,41 @@ function buttons(a) {
     c1+=c;
     //console.log("c1: " + c1);
     //console.log("b: " + b);
-    fill(((b*0) + c1) - (d*50), b*0 - d*50, b*255 - d*50);
-    rect(50*s, 50*s, 100*s, 50*s, 12*s);
+    //home is white
+    fill(((b*red(white)) + c1) - (d*50), b*green(white) - d*50, b*(blue(white)) - d*50);
+    rect(50*s, 10*s, 100*s, 50*s, 12*s);
     c1+=c;
     //console.log("c1: " + c1);
-    fill(((b*0) + c1) - (d*50), b*127 - d*50, b*255 - d*50);
-    rect(700*s, 50*s, 50*s, 50*s, 12*s);
+    //help is yellow
+    fill(((b*red(yellow)) + c1) - (d*50), b*green(yellow) - d*50, b*blue(yellow) - d*50);
+    rect(700*s, 10*s, 50*s, 50*s, 12*s);
     c1+=c;
     //console.log("c1: " + c1);
-    fill(((b*127) + c1) - (d*50), b*0 - d*50, b*255 - d*50);
+    //
+    fill(((b*red(sky)) + c1) - (d*50), b*green(sky) - d*50, b*blue(sky) - d*50);
     rect(200*s, 175*s, 150*s, 150*s, 12*s);
     c1+=c;
-    fill(((b*127) + c1) - (d*50), b*0 - d*50, b*255 - d*50);
+    fill(((b*red(pink)) + c1) - (d*50), b*green(pink) - d*50, b*blue(pink) - d*50);
     rect(450*s, 175*s, 150*s, 150*s, 12*s);
     c1+=c;
-    fill(((b*127) + c1) - (d*50), b*0 - d*50, b*255 - d*50);
+    fill(((b*red(yellow)) + c1) - (d*50), b*green(yellow) - d*50, b*blue(yellow) - d*50);
     rect(200*s, 375*s, 150*s, 150*s, 12*s);
     c1+=c;
-    fill(((b*127) + c1) - (d*50), b*0 - d*50, b*255 - d*50);
+    fill(((b*red(mediumBlue)) + c1) - (d*50), b*green(mediumBlue) - d*50, b*blue(mediumBlue) - d*50);
     rect(450*s, 375*s, 150*s, 150*s, 12*s);
+    if (!a) {
+        noStroke();
+        fill(0,0,0);
+        textFont('Arial');
+        textSize(26*s);
+        textAlign(CENTER, CENTER);
+        text('Home', 100*s, 35*s);
+        text('?', 725*s, 35*s);
+        text('Shape\nSorter', 275*s, 240*s);
+        text('Vegitable\nShanobi', 525*s, 240*s);
+        text('Cookie\nTrace', 275*s, 450*s);
+        text('Bubble\nRythm', 525*s, 450*s);
+    }
     if (subPage == "helpSubPage") {
         c1+=c;
         fill ((b*255) + c1, (b*255) + c1, (b*50) + c1);
