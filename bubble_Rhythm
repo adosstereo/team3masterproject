@@ -1,0 +1,35 @@
+// Card is 270x232 units, drawn at 2x
+let hov = false;
+
+function setup() {
+  const c = createCanvas(540, 464);
+  c.mouseOver(() => hov = true);
+  c.mouseOut(() => hov = false);
+}
+
+function draw() {
+  scale(2);
+  background('#66d3ea');
+  const navy = '#1a2a4a';
+
+  // hover animation: bubbles pulse and float
+  const t = frameCount * 0.1;
+  const s1 = hov ? 1 + sin(t * 2) * 0.08 : 1;
+  const s2 = hov ? 1 + sin(t * 2 + 1.5) * 0.08 : 1;
+  const y1 = hov ? cos(t * 1.5) * 5 : 0;
+  const y2 = hov ? cos(t * 1.5 + 1.5) * 5 : 0;
+
+  // bubbles (outline only)
+  noFill(); stroke(navy); strokeWeight(3);
+  ellipse(99, 78 + y1, 74 * s1, 74 * s1);
+  ellipse(180, 101 + y2, 82 * s2, 82 * s2);
+
+  // title
+  noStroke(); fill(navy);
+  textFont('Arial'); textStyle(BOLD); textSize(32); textAlign(LEFT, BASELINE);
+  text('Bubble Rhythm', 14, 192);
+
+  // card border
+  noFill(); stroke(navy); strokeWeight(2);
+  rect(1, 1, 268, 230);
+}
